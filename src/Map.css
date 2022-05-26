@@ -8,7 +8,8 @@
   border: 1px solid blue;
 }
 
-.entity, .tile {
+.entity,
+.tile {
   position: absolute;
   box-sizing: border-box;
   width: 3em;
@@ -17,10 +18,13 @@
 
 .entity {
   z-index: 10;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: 50% 50%;
 }
 
 .selected {
-  box-shadow: 0 0 0.5em blue;
+  filter: drop-shadow(0px 0px 0.1em blue);
 }
 
 .tile {
@@ -34,13 +38,10 @@
 }
 
 .pc-one {
-  background-color: red;
 }
 
 .pc-two {
-  background-color: blue;
 }
 
 .npc-one {
-  background-color: green;
 }
