@@ -1,0 +1,46 @@
+.map {
+  position: relative;
+  border-top: 1px solid #ccc;
+  border-left: 1px solid #ccc;
+}
+
+.map.selectable > .tile:hover {
+  border: 1px solid blue;
+}
+
+.entity, .tile {
+  position: absolute;
+  box-sizing: border-box;
+  width: 3em;
+  height: 3em;
+}
+
+.entity {
+  z-index: 10;
+}
+
+.selected {
+  box-shadow: 0 0 0.5em blue;
+}
+
+.tile {
+  z-index: 0;
+  border-right: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+}
+
+.tile.dropHover {
+  border: 1px solid blue;
+}
+
+.pc-one {
+  background-color: red;
+}
+
+.pc-two {
+  background-color: blue;
+}
+
+.npc-one {
+  background-color: green;
+}
