@@ -99,6 +99,17 @@ export default class View {
 		this.ctx.restore();
 	}
 
+	renderVision = () => {
+		this.ctx.fillStyle = "#000";
+		for (const [x, y] of this.game.opaqueCells()) {
+			this.ctx.fillRect(x, y, 1, 1);
+		}
+		this.ctx.fillStyle = "#0008";
+		for (const [x, y] of this.game.seenBeforeCells()) {
+			this.ctx.fillRect(x, y, 1, 1);
+		}
+	}
+
 	render = () => {
 		this.ctx.resetTransform();
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -111,6 +122,7 @@ export default class View {
 		for (const wall of this.game.walls) {
 			this.renderWall(wall);
 		}
+		this.renderVision();
 	}
 
 	// viewport coordinates are event.clientX, event.clientY

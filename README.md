@@ -13,11 +13,13 @@ A super simple virtual tabletop. Features / Roadmap:
 - [ ] Mechanism for switching between maps.
 - [ ] Controls:
 	- [ ] Touch support.
+	- [ ] Iterating through entities stacked on top of each other when clicking them.
 	- [ ] Mouse-based controls for entity movement.
 	- [ ] Entity dragging that snaps into the grid, with a preview of visible / reachable squares?
 	- [ ] Keyboard-based map movement and zoom.
 	- [ ] Keyboard-baed entity selection (maybe just tabbing through entities.)
 - [ ] Maybe some way for the game master to set up a map.
+- [ ] Maybe per-player vision?
 - Probably no light because tables I have played so far have mostly ignored lighting.
 
 Other goals:
