@@ -7,47 +7,85 @@ export default class Control {
 
 		window.addEventListener('keydown', this.onKeydown);
 
-		this.canvas.addEventListener('click', this.onClick);
 		this.canvas.addEventListener("mousedown", this.onMouseDown);
 		this.canvas.addEventListener("mousemove", this.onMouseMove);
 		this.canvas.addEventListener("mouseup", this.onMouseUp);
 		this.canvas.addEventListener("mouseleave", this.onMouseLeave);
 		this.canvas.addEventListener("wheel", this.onWheel)
+
+		this.canvas.addEventListener("touchdown", this.onMouseDown);
+		this.canvas.addEventListener("touchmove", this.onMouseMove);
+		this.canvas.addEventListener("toucheup", this.onMouseUp);
+		this.canvas.addEventListener("touchleave", this.onMouseLeave);
+
 	}
+
+	static PIXELS_SCROLLED_PER_LINE = 16; // We could do something complicated to figure out the exact value (see https://stackoverflow.com/questions/20110224/what-is-the-height-of-a-line-in-a-wheel-event-deltamode-dom-delta-line), but I'd say this is good enough.
+	static ZOOM_FACTOR_KEYBOARD = Math.exp(-5 * Control.PIXELS_SCROLLED_PER_LINE / 500);
+	static CELLS_PER_KEYPRESS = 2;
 
 	onKeydown = (e) => {
 		switch (e.key) {
 		case "ArrowUp":
-			this.game.moveUp();
+			if (e.ctrlKey) {
+				this.view.translateWorldCoords(0, Control.CELLS_PER_KEYPRESS);
+			} else {
+				this.game.moveUp();
+			}
 			break;
 		case "ArrowDown":
-			// const start = performance.now();
-			this.game.moveDown();
-			// const stop = performance.now();
-			// if (!window.moveDownTimes) {
-			// 	window.moveDownTimes = []
-			// }
-			// window.moveDownTimes.push(stop - start);
-			// console.log("Down avg:", window.moveDownTimes.reduce((x, y) => x + y, 0) / window.moveDownTimes.length);
+			if (e.ctrlKey) {
+				this.view.translateWorldCoords(0, -Control.CELLS_PER_KEYPRESS);
+			} else {
+				this.game.moveDown();
+			}
 			break;
 		case "ArrowLeft":
-			this.game.moveLeft();
+			if (e.ctrlKey) {
+				this.view.translateWorldCoords(Control.CELLS_PER_KEYPRESS, 0);
+			} else {
+				this.game.moveLeft();
+			}
 			break;
 		case "ArrowRight":
-			this.game.moveRight();
+			if (e.ctrlKey) {
+				this.view.translateWorldCoords(-Control.CELLS_PER_KEYPRESS, 0);
+			} else {
+				this.game.moveRight();
+			}
+			break;
+		case "PageUp":
+			e.preventDefault();
+			this.view.zoomAround(
+				1 / Control.ZOOM_FACTOR_KEYBOARD,
+				window.innerWidth / 2,
+				window.innerHeight / 2
+			);
+			break;
+		case "PageDown":
+			e.preventDefault();
+			this.view.zoomAround(
+				Control.ZOOM_FACTOR_KEYBOARD,
+				window.innerWidth / 2,
+				window.innerHeight / 2
+			);
+			break;
+		case "Tab":
+			e.preventDefault();
+			this.entityDragInitiated = false; // If the selected entity changes, it would be confusing to suddenly be dragging that new entity. Moving the map around should be fine, though. 
+			if (e.shiftKey) {
+				this.game.selectPreviousEntity();
+			} else {
+				this.game.selectNextEntity();
+			}
 			break;
 		default:
 			return;
 		}
 	}
 
-	onClick = (e) => {
-		const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
-		const hitEntities = this.game.entitiesInCell(Math.floor(x), Math.floor(y));
-		this.game.selectEntity(hitEntities[0]);
-	}
-
-	dragInitiated = false;
+	mapDragInitiated = false;
+	entityDragInitiated = false;
 	lastDragX;	
 	lastDragY;	
 
@@ -56,7 +94,16 @@ export default class Control {
 		if (e.button !== 0) {
 			return;
 		}
-		this.dragInitiated = true;
+
+		const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
+		const hitEntities = this.game.entitiesInCell(Math.floor(x), Math.floor(y));
+		if (hitEntities.length > 0) {
+			this.game.selectEntity(hitEntities[0]);
+			this.entityDragInitiated = true;
+		} else {
+			this.mapDragInitiated = true;
+		}
+
 		this.lastDragX = e.clientX;
 		this.lastDragY = e.clientY;
 	}
@@ -66,24 +113,26 @@ export default class Control {
 		if (!(e.buttons & 1)) {
 			return;
 		}
-		// Only do drag if the moust was pressed down within the canvas element.
-		if (!this.dragInitiated) {
-			return;
+		// Only do something if the moust was pressed down within the canvas element, either for a map drag of a entity drag.
+		if (this.mapDragInitiated) {
+			this.view.translateViewportCoords(e.clientX - this.lastDragX, e.clientY - this.lastDragY);
+			this.lastDragX = e.clientX;
+			this.lastDragY = e.clientY;
+		} else if (this.entityDragInitiated) {
+			const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
+			this.game.moveSelectedTo(Math.floor(x), Math.floor(y));
 		}
-		this.view.translate(e.clientX - this.lastDragX, e.clientY - this.lastDragY);
-		this.lastDragX = e.clientX;
-		this.lastDragY = e.clientY;
 	}
 
 	onMouseUp = (e) => {
-		this.dragInitiated = false
+		this.mapDragInitiated = false;
+		this.entityDragInitiated = false;
 	}
 
 	onMouseLeave = (e) => {
-		this.dragInitiated = false;
+		this.mapDragInitiated = false;
+		this.entityDragInitiated = false;
 	}
-
-	static PIXELS_SCROLLED_PER_LINE = 16; // We could do something complicated to figure out the exact value (see https://stackoverflow.com/questions/20110224/what-is-the-height-of-a-line-in-a-wheel-event-deltamode-dom-delta-line), but I'd say this is good enough.
 
 	onWheel = (e) => {
 		if (!(e.deltaMode === 0 || e.deltaMode === 1)) {

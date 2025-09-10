@@ -74,12 +74,25 @@ export default class View {
 		this.ctx.stroke();
 	}
 
-	renderEntity = (entity) => {
-		this.ctx.save();
-		if (entity.selected) {
-			this.ctx.shadowColor = "#1e81b0";
-			this.ctx.shadowBlur = 15;
+	renderEntities = () => {
+		for (const entity of this.game.entities) {
+			if (entity.selected) {
+				continue; // draw this one last so it is on top.
+			}
+			this.ctx.drawImage(
+				this.images[entity.type],
+				entity.x, entity.y, entity.w, entity.h
+			);
 		}
+
+		// Render selected entity.
+		const entity = this.game.selectedEntity;
+		if (!entity) {
+			return;
+		}
+		this.ctx.save();
+		this.ctx.shadowColor = "#1e81b0";
+		this.ctx.shadowBlur = 15;
 		this.ctx.drawImage(
 			this.images[entity.type],
 			entity.x, entity.y, entity.w, entity.h
@@ -116,9 +129,7 @@ export default class View {
 
 		this.ctx.setTransform(this.getTransform());
 		this.renderGrid();
-		for (const entity of this.game.entities) {
-			this.renderEntity(entity);
-		}
+		this.renderEntities();
 		for (const wall of this.game.walls) {
 			this.renderWall(wall);
 		}
@@ -159,20 +170,33 @@ export default class View {
 		return { dx: dx * scaleX, dy: dy * scaleY };
 	}
 
+	#worldToCanvasDelta = (dx, dy) => {
+		return { dx: this.s * dx, dy: this.s * dy };
+	}
+
 
 	clampTranslate = () => {
 		this.e = clamp(this.s * (1 - this.game.width), this.canvas.width - this.s, this.e);
 		this.f = clamp(this.s * (1 - this.game.height), this.canvas.height - this.s, this.f);
 	}
 
-	// dx and dy are (deltas) in viewport coordinates.
-	translate = (dx, dy) => {
-		const canvasDelta = this.#viewportToCanvasDelta(dx, dy);
-		this.e = this.e + canvasDelta.dx;
-		this.f = this.f + canvasDelta.dy;
+	translateCanvasCoords = (dx, dy) => {
+		this.e = this.e + dx;
+		this.f = this.f + dy;
 		this.clampTranslate();
 		this.render();
 	}
+
+	translateViewportCoords = (dx, dy) => {
+		const canvasDelta = this.#viewportToCanvasDelta(dx, dy);
+		this.translateCanvasCoords(canvasDelta.dx, canvasDelta.dy);
+	}
+
+	translateWorldCoords = (dx, dy) => {
+		const worldDelta = this.#worldToCanvasDelta(dx, dy);
+		this.translateCanvasCoords(worldDelta.dx, worldDelta.dy);
+	}
+
 
 	// x and y in viewport coordinates.
 	zoomAround = (zoom, x, y) => {

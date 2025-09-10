@@ -62,34 +62,101 @@ export default class Game extends EventEmitter {
 			old: old,
 			new: this.selectEntity,
 		});
+	};
+
+	// in (English) "reading order". Ties broken by earlier position in this.entities, so this comparator never returns 0.
+	#readingOrder = (entityA, entityB) => {
+		const dy = entityA.y - entityB.y;
+		if (dy !== 0) {
+			return dy;
+		}
+		const dx = entityA.x - entityB.x;
+		if (dx !== 0) {
+			return dx;
+		}
+		return this.entities.indexOf(entityA) - this.entities.indexOf(entityB);
 	}
 
-	moveSelected = (dx, dy) => {
-		const actor = this.selectedEntity;
-		if (!actor) {
+	#selectNextEntity = (comparator) => {
+		if (this.entities.length === 0) {
 			return;
 		}
 
-		const oldX = actor.x;
-		const oldY = actor.y;
+		const min = (a, b) => (comparator(a, b) < 0) ? a : b;
 
-		actor.x = clamp(0, this.width, actor.x + dx);
-		actor.y = clamp(0, this.height, actor.y + dy);
-
-		if (oldX !== actor.x || oldY !== actor.y) {
-			this.#updateVisibility(actor.visionId, oldX, oldY, actor.x, actor.y, actor.visionRange);
-
-			this.fire("entity moved", {
-				entity: actor,
-				oldX: oldX,
-				oldY: oldY,
-			});
+		if (!this.selectedEntity) {
+			this.selectEntity(this.entities.reduce(min));
+			return;
 		}
+
+		// Select next entity after this.selectedEntity in order of ascending y, then ascending x coordinate. If there is none, start at the beginning again.
+		const subsequentEntities = this.entities
+			.filter(entity => comparator(this.selectedEntity, entity) < 0);
+		if (subsequentEntities.length === 0) {
+			this.selectEntity(this.entities.reduce(min));
+			return;
+		}
+
+		const next = subsequentEntities.reduce(min);
+		this.selectEntity(next);
+	}
+
+	selectNextEntity = () => {
+		this.#selectNextEntity(this.#readingOrder);
+	}
+
+	selectPreviousEntity = () => {
+		this.#selectNextEntity((a, b) => -this.#readingOrder(a, b));
+	}
+
+	moveSelectedTo = (x, y) => {
+		const selected = this.selectedEntity;
+		if (!selected) {
+			return;
+		}
+
+		const oldX = selected.x;
+		const oldY = selected.y;
+		const newX = clamp(0, this.width - 1, x);
+		const newY = clamp(0, this.height - 1, y);
+
+		if (newX === oldX && newY === oldY) {
+			return;
+		}
+
+		const distance = Game.distance(newX - oldX, newY - oldY);
+		let blocked = false;
+		for (const [ a, b, c, d, ] of this.#relevantWallSegments(oldX, oldY, distance)) {
+			if (Game.prohibitsMovement(a, b, c, d, oldX + 0.5, oldY + 0.5, newX + 0.5, newY + 0.5)) {
+				blocked = true;
+				break;
+			}
+		}
+		if (blocked) {
+			return;
+		}
+
+		selected.x = newX;
+		selected.y = newY;
+		this.#updateVisibility(selected.visionId, oldX, oldY, newX, newY, selected.visionRange);
+
+		this.fire("entity moved", {
+			entity: selected,
+			oldX: oldX,
+			oldY: oldY,
+		});
+	}
+	moveSelectedBy = (dx, dy) => {
+		const selected = this.selectedEntity;
+		if (!selected) {
+			return;
+		}
+		this.moveSelectedTo(selected.x + dx, selected.y + dy);
 	};
-	moveUp = () => { this.moveSelected(0, -1); };
-	moveDown = () => { this.moveSelected(0, 1); };
-	moveLeft = () => { this.moveSelected(-1, 0); };
-	moveRight = () => { this.moveSelected(1, 0); };
+	moveUp = () => { this.moveSelectedBy(0, -1); };
+	moveDown = () => { this.moveSelectedBy(0, 1); };
+	moveLeft = () => { this.moveSelectedBy(-1, 0); };
+	moveRight = () => { this.moveSelectedBy(1, 0); };
 
 	entitiesInCell = (x, y) => {
 		return this.entities.filter(entity =>
@@ -157,24 +224,19 @@ export default class Game extends EventEmitter {
 		for (let i = Math.max(x - r, 0); i <= Math.min(x + r, this.width - 1); i++) {
 			const maxY = Game.maximalY(Math.abs(i - x), r);
 			for (let j = Math.max(y - maxY, 0); j <= Math.min(y + maxY, this.height - 1); j++) {
-				if (i === x - r && j === y) {
-					console.log(this.visionMap[j * this.width + i]);
-				}
 				this.visionMap[j * this.width + i] &= deletionBitmask;
-
-				if (i === x - r && j === y) {
-					console.log(this.visionMap[j * this.width + i]);
-				}
 			}
 		}
 	};
 
-	static EPSILON = 0.0001; // We allow players to see points that are exactly collinear with a corner.
-	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect?
-	static intersect = (a, b, c, d, e, f, g, h) => {
+	static EPSILON = 0.0001;
+
+	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect for the purposes of looking through walls?
+	// We allow players to see points that are exactly collinear with a corner, so this is more liberal (= detects fewer intersections) than Game.prohibitsMovement. Notice the signs in front of the EPSILON.
+	static blocksVision = (a, b, c, d, e, f, g, h) => {
 		const determinant = (a - c) * (f - h) - (e - g) * (b - d);
 		if (determinant === 0) {
-			return false; // This is a design decision. If the line of sight is identical to the wall, we say the player can see alongside it on both sides.
+			return false; // This is a design decision. If the line of sight is parallel to the wall, we say the player can see alongside it.
 		}
 
 		const v = (f - h) * (g - c) + (g - e) * (h - d);
@@ -183,6 +245,23 @@ export default class Game extends EventEmitter {
 			&& (v / determinant <= 1 + Game.EPSILON)
 			&& (-Game.EPSILON <= w / determinant)
 			&& (w / determinant <= 1 + Game.EPSILON);
+	};
+
+	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect for the purposes of movement close to walls?
+	// We allow players to see points that are exactly collinear with a corner, so this is more conservative (= detects more intersections) than Game.blocksVision. Notice the signs in front of the EPSILON.
+	static prohibitsMovement = (a, b, c, d, e, f, g, h) => {
+		const determinant = (a - c) * (f - h) - (e - g) * (b - d);
+		if (determinant === 0) {
+			return false; // If the movement is parallel to the wall, it is allowed.
+		}
+
+		const v = (f - h) * (g - c) + (g - e) * (h - d);
+		const w = - ((d - b) * (g - c) + (a - c) * (h - d));
+
+		return (Game.EPSILON <= v / determinant)
+			&& (v / determinant <= 1 - Game.EPSILON)
+			&& (Game.EPSILON <= w / determinant)
+			&& (w / determinant <= 1 - Game.EPSILON);
 	};
 
 	#addVisibility = (id, x, y, r) => {
@@ -194,7 +273,7 @@ export default class Game extends EventEmitter {
 				let visible = true;
 				for (const [a, b, c, d] of this.#relevantWallSegments(x, y, r)) {
 					// We add 0.5 to the x and y values because we say a square is visible from another square if the line connecting their centers does not intersect any walls.
-					if (Game.intersect(a, b, c, d, x + 0.5, y + 0.5, i + 0.5, j + 0.5)) {
+					if (Game.blocksVision(a, b, c, d, x + 0.5, y + 0.5, i + 0.5, j + 0.5)) {
 						visible = false;
 						break;
 					}
