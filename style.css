@@ -1,0 +1,51 @@
+html, body {
+	margin: 0;
+	overflow: hidden;
+	height: 100%;
+}
+body {
+	line-height: 1.45;
+	background-color: #f5f5f5;
+	color: #080808;
+}
+h1 {
+	margin: 0 0 0.5em 0;
+	font-size: 1rem;
+	font-weight: bold;
+}
+ul {
+	margin: 0;
+	font-size: 1rem;
+	padding-left: 1.2em;
+}
+canvas {
+	display: block; /* Defaults to inline and then  */
+	height: 100%;
+	width: 100%;
+}
+.infobox {
+	position: fixed;
+	right: 1rem;
+	background-color: #e0e0e0;
+	box-sizing: border-box;
+	border-radius: 1.25rem;
+	border: 1px black solid;
+}
+#toggle-controls {
+	top: 1rem;
+	width: 2.5rem;
+	height: 2.5rem;
+	text-align: center;
+	padding: 0;
+	line-height: 1rem;
+	&:hover { background-color: #c8c8c8; }
+	&:active { background-color: #b0b0b0; }
+}
+#controls {
+	padding: .7em .9em;
+	top: 4rem;
+	width: calc(320px - 2rem);
+}
+.hidden {
+	display: none;
+}
