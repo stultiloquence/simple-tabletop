@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+	<title>Simple Tabletop</title>
+	<link rel="stylesheet" type="text/css" href="./style.css">
+	<link rel="icon" href="favicon-32x32.png">
+	<script type="module" src="./src/main.js"></script>
+	<script type="module">
+		const button = document.getElementById("toggle-controls");
+		const controls = document.getElementById("controls");
+		let hidden = true;
+		button.addEventListener("click", () => {
+			hidden = !hidden;
+			controls.classList.toggle("hidden");
+			button.textContent = hidden ? "?" : "X";
+		});
+	</script>
+</head>
+<body>
+	<canvas id="view"></canvas>
+	<button class="infobox" id="toggle-controls">?</button>
+	<section class="infobox hidden" id="controls">
+		<h1>Mouse Controls</h1>
+		<ul>
+			<li>Click on an entity to select it.</li>
+			<li>Use the arrow keys to move the selected entity.</li>
+		</ul>
+		<h1>Keyboard Controls</h1>
+		<ul>
+			<li>Use tab and shift+tab to cycle through entities.</li>
+			<li>Use the arrow keys to move the selected entity.</li>
+		</ul>
+	</section>
+</body>
+</html>
