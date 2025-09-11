@@ -127,7 +127,7 @@ export default class Game extends EventEmitter {
 		const distance = Game.distance(newX - oldX, newY - oldY);
 		let blocked = false;
 		for (const [ a, b, c, d, ] of this.#relevantWallSegments(oldX, oldY, distance)) {
-			if (Game.prohibitsMovement(a, b, c, d, oldX + 0.5, oldY + 0.5, newX + 0.5, newY + 0.5)) {
+			if (Game.intersect(a, b, c, d, oldX + 0.5, oldY + 0.5, newX + 0.5, newY + 0.5)) {
 				blocked = true;
 				break;
 			}
@@ -229,39 +229,36 @@ export default class Game extends EventEmitter {
 		}
 	};
 
-	static EPSILON = 0.0001;
+	static SAFETY_MARGIN = 0.05;
 
-	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect for the purposes of looking through walls?
-	// We allow players to see points that are exactly collinear with a corner, so this is more liberal (= detects fewer intersections) than Game.prohibitsMovement. Notice the signs in front of the EPSILON.
-	static blocksVision = (a, b, c, d, e, f, g, h) => {
+	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect for the purposes of looking or moving through walls?
+	// We don't want players squeezing in between or looking through the intersection of two wall segments, so this function errs on the side of caution by a safety margin of Game.SAFETY_MARGIN.
+	static intersect = (a, b, c, d, e, f, g, h) => {
+		// We are solving the vector equation
+		// alpha * (a, b)^T + (1 - alpha) * (c, d) = beta * (e, f) + (1 - beta) * (g, h). 
+		// for alpha and beta.
+		// If the determinant is !== 0, the two the two infinite lines extending the two line segments have an intersection. alpha specifies the location of that intersection  on (a, b)--(c, d), with values of 0 and 1 corresponding to the endpoints. Similarly, beta specifies the location on (e, f)--(g, h).
 		const determinant = (a - c) * (f - h) - (e - g) * (b - d);
 		if (determinant === 0) {
-			return false; // This is a design decision. If the line of sight is parallel to the wall, we say the player can see alongside it.
+			return false; // Movement or vision parallel to a wall is allowed.
 		}
 
 		const v = (f - h) * (g - c) + (g - e) * (h - d);
 		const w = - ((d - b) * (g - c) + (a - c) * (h - d));
-		return (-Game.EPSILON <= v / determinant)
-			&& (v / determinant <= 1 + Game.EPSILON)
-			&& (-Game.EPSILON <= w / determinant)
-			&& (w / determinant <= 1 + Game.EPSILON);
-	};
+		const alpha = v / determinant;
+		const beta = w / determinant;
 
-	// Do the line segments (a, b)--(c, d) and (e, f)--(g, h) intersect for the purposes of movement close to walls?
-	// We allow players to see points that are exactly collinear with a corner, so this is more conservative (= detects more intersections) than Game.blocksVision. Notice the signs in front of the EPSILON.
-	static prohibitsMovement = (a, b, c, d, e, f, g, h) => {
-		const determinant = (a - c) * (f - h) - (e - g) * (b - d);
-		if (determinant === 0) {
-			return false; // If the movement is parallel to the wall, it is allowed.
-		}
+		// Theoretically, the two line segments intersect iff alpha and beta are in the interval [0, 1] (i. e. the line's intersection lies within both line segments). However, we want to allow for an absolute error of Game.SAFETY_MARGIN. To make it absolute, we have to account or the line segment's lengths. If labcd is the the length of (a, b)--(c, d), we want
+		// -Game.SAFETY_MARGIN <= alpha * labcd <= labcd + Game.SAFETY_MARGIN.
+		// and analogously for beta.
+		// There are certainly ways to simplify these checks for better performance. (avoid sqrt, ensure only integer parameters and arithmetic, ..), but let's not optimize prematurely.
+		const labcd = Math.sqrt((a - c) * (a - c) + (b - d) * (b - d));
+		const lefgh = Math.sqrt((e - g) * (e - g) + (f - h) * (f - h));
 
-		const v = (f - h) * (g - c) + (g - e) * (h - d);
-		const w = - ((d - b) * (g - c) + (a - c) * (h - d));
-
-		return (Game.EPSILON <= v / determinant)
-			&& (v / determinant <= 1 - Game.EPSILON)
-			&& (Game.EPSILON <= w / determinant)
-			&& (w / determinant <= 1 - Game.EPSILON);
+		return (-Game.SAFETY_MARGIN <= alpha * labcd)
+			&& (alpha * labcd <= labcd + Game.SAFETY_MARGIN)
+			&& (-Game.SAFETY_MARGIN <= beta * lefgh)
+			&& (beta * lefgh <= lefgh + Game.SAFETY_MARGIN);
 	};
 
 	#addVisibility = (id, x, y, r) => {
@@ -273,7 +270,7 @@ export default class Game extends EventEmitter {
 				let visible = true;
 				for (const [a, b, c, d] of this.#relevantWallSegments(x, y, r)) {
 					// We add 0.5 to the x and y values because we say a square is visible from another square if the line connecting their centers does not intersect any walls.
-					if (Game.blocksVision(a, b, c, d, x + 0.5, y + 0.5, i + 0.5, j + 0.5)) {
+					if (Game.intersect(a, b, c, d, x + 0.5, y + 0.5, i + 0.5, j + 0.5)) {
 						visible = false;
 						break;
 					}

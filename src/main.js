@@ -17,3 +17,12 @@ window.addEventListener('resize', () => {
 	resize();
 	view.render();
 });
+
+// For the purposes of debugging:
+
+window.Game = Game;
+window.View = View;
+window.Control = Control;
+window.game = game;
+window.view = view;
+window.control = control;
