@@ -77,27 +77,18 @@ export default class View {
 	renderEntities = () => {
 		for (const entity of this.game.entities) {
 			if (entity.selected) {
-				continue; // draw this one last so it is on top.
+				this.ctx.save();
+				this.ctx.shadowColor = "#1e81b0";
+				this.ctx.shadowBlur = 15;
 			}
 			this.ctx.drawImage(
 				this.images[entity.type],
 				entity.x, entity.y, entity.w, entity.h
 			);
+			if (entity.selected) {
+				this.ctx.restore();
+			}
 		}
-
-		// Render selected entity.
-		const entity = this.game.selectedEntity;
-		if (!entity) {
-			return;
-		}
-		this.ctx.save();
-		this.ctx.shadowColor = "#1e81b0";
-		this.ctx.shadowBlur = 15;
-		this.ctx.drawImage(
-			this.images[entity.type],
-			entity.x, entity.y, entity.w, entity.h
-		);
-		this.ctx.restore();
 	}
 
 	renderWall = (wall) => {

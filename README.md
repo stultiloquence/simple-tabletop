@@ -22,13 +22,13 @@ A super simple virtual tabletop. Features include
 - [ ] Mechanism for switching between maps.
 - [ ] Controls:
 	- [ ] Touch support.
-	- [ ] Iterating through entities stacked on top of each other when clicking them.
+	- [x] Iterating through entities stacked on top of each other when clicking them.
 	- [x] Mouse-based controls for entity movement, entity dragging that snaps into the grid.
 	- [x] Keyboard-based map movement and zoom.
 	- [x] Keyboard-based entity selection (maybe just tabbing through entities.)
 - [ ] Maybe some way for the game master to set up a map.
 - [ ] Maybe per-player vision?
-- [ ] Handle vision and collision detection for entities larger than 1x1.
+- [x] Handle vision and collision detection for entities larger than 1x1.
 
 ## Explicit Non-Goals
 

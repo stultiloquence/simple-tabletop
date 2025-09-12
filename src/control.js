@@ -9,14 +9,14 @@ export default class Control {
 
 		this.canvas.addEventListener("mousedown", this.onMouseDown);
 		this.canvas.addEventListener("mousemove", this.onMouseMove);
-		this.canvas.addEventListener("mouseup", this.onMouseUp);
-		this.canvas.addEventListener("mouseleave", this.onMouseLeave);
+		this.canvas.addEventListener("mouseup", this.onMouseUpOrLeave);
+		this.canvas.addEventListener("mouseleave", this.onMouseUpOrLeave);
 		this.canvas.addEventListener("wheel", this.onWheel)
 
 		this.canvas.addEventListener("touchdown", this.onMouseDown);
 		this.canvas.addEventListener("touchmove", this.onMouseMove);
-		this.canvas.addEventListener("toucheup", this.onMouseUp);
-		this.canvas.addEventListener("touchleave", this.onMouseLeave);
+		this.canvas.addEventListener("toucheup", this.onMouseUpOrLeave);
+		this.canvas.addEventListener("touchleave", this.onMouseUpOrLeave);
 
 	}
 
@@ -84,10 +84,19 @@ export default class Control {
 		}
 	}
 
+	static AWAITING_NEXT_MOUSEDOWN = 0;
+	static COULD_BE_A_CLICK = 1;
+	static DRAGGING = 2;
+	mouseState = Control.AWAITING_NEXT_MOUSEDOWN;
+
+	mouseDownEvent;
+
 	mapDragInitiated = false;
 	entityDragInitiated = false;
-	lastDragX;	
-	lastDragY;	
+	lastDragX;
+	lastDragY;
+	entityDragOffsetX;
+	entityDragOffsetY;
 
 	onMouseDown = (e) => {
 		// Only listen to primary mouse button click. Here the primary button is 0.
@@ -95,17 +104,8 @@ export default class Control {
 			return;
 		}
 
-		const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
-		const hitEntities = this.game.entitiesInCell(Math.floor(x), Math.floor(y));
-		if (hitEntities.length > 0) {
-			this.game.selectEntity(hitEntities[0]);
-			this.entityDragInitiated = true;
-		} else {
-			this.mapDragInitiated = true;
-		}
-
-		this.lastDragX = e.clientX;
-		this.lastDragY = e.clientY;
+		this.mouseState = Control.COULD_BE_A_CLICK;
+		this.mouseDownEvent = e;
 	}
 
 	onMouseMove = (e) => {
@@ -113,25 +113,89 @@ export default class Control {
 		if (!(e.buttons & 1)) {
 			return;
 		}
-		// Only do something if the moust was pressed down within the canvas element, either for a map drag of a entity drag.
-		if (this.mapDragInitiated) {
-			this.view.translateViewportCoords(e.clientX - this.lastDragX, e.clientY - this.lastDragY);
-			this.lastDragX = e.clientX;
-			this.lastDragY = e.clientY;
-		} else if (this.entityDragInitiated) {
-			const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
-			this.game.moveSelectedTo(Math.floor(x), Math.floor(y));
+
+		if (this.mouseState === Control.DRAGGING) {
+			this.onDrag(e);
+			return;
+		}
+
+		if (this.mouseState === Control.COULD_BE_A_CLICK) {
+			const dx = Math.abs(e.clientX - this.mouseDownEvent.clientX);
+			const dy = Math.abs(e.clientY - this.mouseDownEvent.clientY)
+			if (dx > 10 || dy > 10) {
+				this.mouseState = Control.DRAGGING;
+				this.onDragStart(this.mouseDownEvent);
+				this.onDrag(e);
+			}
 		}
 	}
 
-	onMouseUp = (e) => {
-		this.mapDragInitiated = false;
-		this.entityDragInitiated = false;
+	onMouseUpOrLeave = (e) => {
+		switch (this.mouseState) {
+		case Control.DRAGGING:
+			this.onDragStop(e);
+			break;
+		case Control.COULD_BE_A_CLICK:
+			this.onClick(e);
+			break;
+		case Control.AWAITING_NEXT_MOUSEDOWN:
+			// Probably means the mouse was pressed down outside the canvas element and released inside.
+			break;
+		default:
+			break;
+		}
+
+		this.mouseState = Control.AWAITING_NEXT_MOUSEDOWN;
 	}
 
-	onMouseLeave = (e) => {
-		this.mapDragInitiated = false;
+	// Syntethic click and drag events (not the browser's).
+
+	onClick = (e) => {
+		const { x: wx, y: wy } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
+		const x = Math.floor(wx);
+		const y = Math.floor(wy);
+		const entity = this.game.nextEntityInCell(x, y);
+		this.game.selectEntity(entity);
+	}
+
+	onDragStart = (e) => {
+		const { x: wx, y: wy } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
+		const x = Math.floor(wx);
+		const y = Math.floor(wy)
+		const entity = this.game.topEntityInCell(x, y);
+
+		this.lastDragX = e.clientX;
+		this.lastDragY = e.clientY;
+
+		if (entity) {
+			this.game.selectEntity(entity);
+			this.entityDragInitiated = true;
+			// For entities larger than 1x1, we need to remember where on the entity we clicked:
+			this.entityDragOffsetX = x - entity.x;
+			this.entityDragOffsetY = y - entity.y;
+		} else {
+			this.mapDragInitiated = true;
+		}
+	}
+
+	onDrag = (e) => {
+		if (this.mapDragInitiated) {
+			this.view.translateViewportCoords(e.clientX - this.lastDragX, e.clientY - this.lastDragY);
+		} else if (this.entityDragInitiated) {
+			const { x, y } = this.view.viewportToWorldCoords(e.clientX, e.clientY);
+			this.game.moveSelectedTo(
+				Math.floor(x - this.entityDragOffsetX),
+				Math.floor(y - this.entityDragOffsetY)
+			);
+		}
+
+		this.lastDragX = e.clientX;
+		this.lastDragY = e.clientY;
+	}
+
+	onDragStop = (e) => {
 		this.entityDragInitiated = false;
+		this.mapDragInitiated = false;
 	}
 
 	onWheel = (e) => {

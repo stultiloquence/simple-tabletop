@@ -4,14 +4,16 @@ export default class Game extends EventEmitter {
 	
 	width = 64;
 	height = 64;
+
+	// The order of entities in this array matters. Entities further back are considered on top of previous entities. The last entry is always this.selectedEntity (if the latter is not null).
 	entities = [
-		{ type: 'goblin', x : 5, y: 5, w: 1, h: 1, selected: false,
-			vision: true, visionRange: 12, visionId: 0, visionCenterX: 0.5, visionCenterY: 0.5 },
-		{ type: 'priest', x : 10, y: 14, w: 1, h: 1, selected: false,
+		{ id: 0, type: 'goblin', x : 5, y: 5, w: 1, h: 1, selected: false,
+			vision: true, visionRange: 12, visionId: 0 },
+		{ id: 1, type: 'priest', x : 10, y: 14, w: 1, h: 1, selected: false,
 			vision: false },
-		{ type: 'soldier', x : 9, y: 13, w: 1, h: 1, selected: false,
+		{ id: 2, type: 'soldier', x : 9, y: 13, w: 4, h: 4, selected: false,
 			vision: true, visionRange: 12, visionId: 1 },
-		{ type: 'priest', x : 11, y: 12, w: 1, h: 1, selected: false,
+		{ id: 3, type: 'priest', x : 11, y: 12, w: 1, h: 1, selected: false,
 			vision: false },
 	];
 	walls = [
@@ -29,12 +31,7 @@ export default class Game extends EventEmitter {
 
 		for (const entity of this.entities) {
 			if (entity.vision) {
-				this.#addVisibility(
-					entity.visionId,
-					entity.x,
-					entity.y,
-					entity.visionRange
-				);
+				this.#addVisibility(entity);
 			}
 		}
 	}
@@ -58,14 +55,18 @@ export default class Game extends EventEmitter {
 		entity.selected = true;
 		this.selectedEntity = entity;
 
+		// Move to the back of this.entities
+		this.entities.splice(this.entities.indexOf(entity), 1);
+		this.entities.push(entity);
+
 		this.fire("selection changed", {
 			old: old,
 			new: this.selectEntity,
 		});
 	};
 
-	// in (English) "reading order". Ties broken by earlier position in this.entities, so this comparator never returns 0.
-	#readingOrder = (entityA, entityB) => {
+	// in (English) "reading order". Ties broken by entity.id, so this comparator only returns 0 for equal entities.
+	static readingOrder = (entityA, entityB) => {
 		const dy = entityA.y - entityB.y;
 		if (dy !== 0) {
 			return dy;
@@ -74,7 +75,7 @@ export default class Game extends EventEmitter {
 		if (dx !== 0) {
 			return dx;
 		}
-		return this.entities.indexOf(entityA) - this.entities.indexOf(entityB);
+		return entityA.id - entityB.id;
 	}
 
 	#selectNextEntity = (comparator) => {
@@ -102,11 +103,11 @@ export default class Game extends EventEmitter {
 	}
 
 	selectNextEntity = () => {
-		this.#selectNextEntity(this.#readingOrder);
+		this.#selectNextEntity(Game.readingOrder);
 	}
 
 	selectPreviousEntity = () => {
-		this.#selectNextEntity((a, b) => -this.#readingOrder(a, b));
+		this.#selectNextEntity((a, b) => -Game.readingOrder(a, b));
 	}
 
 	moveSelectedTo = (x, y) => {
@@ -126,8 +127,11 @@ export default class Game extends EventEmitter {
 
 		const distance = Game.distance(newX - oldX, newY - oldY);
 		let blocked = false;
-		for (const [ a, b, c, d, ] of this.#relevantWallSegments(oldX, oldY, distance)) {
-			if (Game.intersect(a, b, c, d, oldX + 0.5, oldY + 0.5, newX + 0.5, newY + 0.5)) {
+		const entityCenterX = selected.w / 2;
+		const entityCenterY = selected.h / 2;
+		for (const [ a, b, c, d ] of this.#relevantWallSegments(oldX, oldY, distance)) {
+			if (Game.intersect(a, b, c, d,
+				oldX + entityCenterX, oldY + entityCenterY, newX + entityCenterX, newY + entityCenterY)) {
 				blocked = true;
 				break;
 			}
@@ -136,9 +140,10 @@ export default class Game extends EventEmitter {
 			return;
 		}
 
+		this.#clearVisibility(selected);
 		selected.x = newX;
 		selected.y = newY;
-		this.#updateVisibility(selected.visionId, oldX, oldY, newX, newY, selected.visionRange);
+		this.#addVisibility(selected);
 
 		this.fire("entity moved", {
 			entity: selected,
@@ -158,15 +163,41 @@ export default class Game extends EventEmitter {
 	moveLeft = () => { this.moveSelectedBy(-1, 0); };
 	moveRight = () => { this.moveSelectedBy(1, 0); };
 
-	entitiesInCell = (x, y) => {
-		return this.entities.filter(entity =>
-			entity.x <= x
+	static isEntityWithinCell = (x, y, entity) => {
+		return entity.x <= x
 			&& entity.y <= y
 			&& (entity.x + entity.w) >= x + 1
-			&& (entity.y + entity.h) >= y + 1
-		);
+			&& (entity.y + entity.h) >= y + 1;
+	}
+
+	// First entity in this cell according to Game.readingOrder. If this.selectedEntity is in this cell, instead select the next entity in the cell according to reading order.
+	// Returns undefined if there are no entities in the cell.
+	nextEntityInCell = (x, y) => {
+		const min = (a, b) => (Game.readingOrder(a, b) < 0) ? a : b;
+
+		const entitiesInCell = this.entities
+			.filter(e => Game.isEntityWithinCell(x, y, e))
+			.sort(Game.readingOrder);
+
+		if (entitiesInCell.length === 0) {
+			return undefined;
+		}
+
+		const selectedIndex = entitiesInCell.indexOf(this.selectedEntity);
+		const nextIndex = (selectedIndex + 1) % entitiesInCell.length; // Uses the fact that .indexOf returns -1 if the entity is not present.
+
+		return entitiesInCell[nextIndex];
 	};
 
+	// top means last in the this.entities array.
+	// Returns undefined if there are no entities in the cell.
+	topEntityInCell = (x, y) => {
+		const entitiesInCell = this.entities
+			.filter(e => Game.isEntityWithinCell(x, y, e));
+		return entitiesInCell[entitiesInCell.length - 1];
+	}
+
+	// r is optional. If r is provided, potentially some optimization is done, otherwise all wall segments are returned.
 	*#relevantWallSegments(x, y, r) {
 		// todo: Since walls rarely change, we could do some precomputation to only return a subset of walls here.
 		for (const wall of this.walls) {
@@ -176,19 +207,14 @@ export default class Game extends EventEmitter {
 		}
 	}
 
-	static distance = (dx, dy) => {
-		const min = Math.min(dx, dy);
-		const max = Math.max(dx, dy);
-		return max + (min >> 1);
+	static distance = (x1, y1, x2, y2) => {
+		const dx = x2 - x1
+		const dy = y2 - y1
+		return Math.sqrt(dx * dx + dy * dy);
 	};
 
-	static maximalY = (x, d) => {
-		const y = d - (x >> 1);
-		if (x <= y) {
-			return y;
-		} else {
-			return ((d - x) << 1) + 1;
-		}
+	static maximalDX = (dy, distance) => {
+		return Math.sqrt(distance * distance - dy * dy);
 	};
 
 	// return === 0: never seen before.
@@ -218,15 +244,15 @@ export default class Game extends EventEmitter {
 		}
 	}
 
-	#clearVisibility = (id, x, y, r) => {
-		const deletionBitmask = ~(1 << id);
+	#clearVisibility = (entity) => {
+		const x = entity.x + entity.w / 2;
+		const y = entity.y + entity.h / 2;
+		const r = entity.visionRange;
+		const deletionBitmask = ~(1 << entity.visionId);
 
-		for (let i = Math.max(x - r, 0); i <= Math.min(x + r, this.width - 1); i++) {
-			const maxY = Game.maximalY(Math.abs(i - x), r);
-			for (let j = Math.max(y - maxY, 0); j <= Math.min(y + maxY, this.height - 1); j++) {
-				this.visionMap[j * this.width + i] &= deletionBitmask;
-			}
-		}
+		this.#forEachWithinRange(x, y, r, (i, j) => {
+			this.visionMap[j * this.width + i] &= deletionBitmask;
+		});
 	};
 
 	static SAFETY_MARGIN = 0.05;
@@ -261,30 +287,50 @@ export default class Game extends EventEmitter {
 			&& (beta * lefgh <= lefgh + Game.SAFETY_MARGIN);
 	};
 
-	#addVisibility = (id, x, y, r) => {
-		const addBitmask = Game.SEEN_BEFORE | (1 << id);
-
-		for (let i = Math.max(x - r, 0); i <= Math.min(x + r, this.width - 1); i++) {
-			const maxY = Game.maximalY(Math.abs(i - x), r);
-			for (let j = Math.max(y - maxY, 0); j <= Math.min(y + maxY, this.height - 1); j++) {
-				let visible = true;
-				for (const [a, b, c, d] of this.#relevantWallSegments(x, y, r)) {
-					// We add 0.5 to the x and y values because we say a square is visible from another square if the line connecting their centers does not intersect any walls.
-					if (Game.intersect(a, b, c, d, x + 0.5, y + 0.5, i + 0.5, j + 0.5)) {
-						visible = false;
-						break;
-					}
-				}
-				if (visible) {
-					this.visionMap[j * this.width + i] |= addBitmask;
-				}
+	// Checks whether (e, f)--(g, h) intersects any wall.
+	// r is an optional parameter used to optimize the function by only checking for relevantWallSegments(e, f, r).
+	#intersectsAnyWall = (e, f, g, h, r) => {
+		for (const [a, b, c, d] of this.#relevantWallSegments(e, f, r)) {
+			if (Game.intersect(a, b, c, d, e, f, g, h)) {
+				return false;
 			}
 		}
-	};
+		return true;
+	}
 
-	#updateVisibility = (id, x1, y1, x2, y2, r) => {
-		this.#clearVisibility(id, x1, y1, r);
-		this.#addVisibility(id, x2, y2, r);
+	#forEachWithinRange = (x, y, r, callback) => {
+		// (i, j) are the coordinates of the upper left corner of the square that they refer to (in e. g. this.#visionMap). So (i + 0.5, j + 0.5) is the square's center, which we care about for distance checking.
+		// Since j is an integer, minY <= j + 0.5 is equivalent Math.ceil(minY - 0.5) <= j, and j + 0.5 <= maxY equivalent to j <= Math.floor(maxY - 0.5). Same for i and x.
+
+		const minY = Math.max(y - r, 0);
+		const maxY = Math.min(y + r, this.height);
+		const minJ = Math.ceil(minY - 0.5);
+		const maxJ = Math.floor(maxY - 0.5);
+
+		for (let j = minJ; j <= maxJ; j++) {
+			const maxDX = Game.maximalDX(j + 0.5 - y, r);
+			const minX = Math.max(x - maxDX, 0);
+			const maxX = Math.min(x + maxDX, this.width);
+			const minI = Math.ceil(minX - 0.5);
+			const maxI = Math.floor(maxX - 0.5);
+			for (let i = minI; i <= maxI; i++) {
+				callback(i, j);
+			}
+		}
+	}
+
+	#addVisibility = (entity) => {
+		const x = entity.x + entity.w / 2;
+		const y = entity.y + entity.h / 2;
+		const r = entity.visionRange;
+		const addBitmask = Game.SEEN_BEFORE | (1 << entity.visionId);
+
+		this.#forEachWithinRange(x, y, r, (i, j) => {
+			const visible = this.#intersectsAnyWall(x, y, i + 0.5, j + 0.5);
+			if (visible) {
+				this.visionMap[j * this.width + i] |= addBitmask;
+			}
+		})
 	};
 };
 
