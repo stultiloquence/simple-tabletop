@@ -26,3 +26,14 @@ window.Control = Control;
 window.game = game;
 window.view = view;
 window.control = control;
+
+
+const ws = new WebSocket("/api");
+
+ws.addEventListener("open", () => {
+  ws.send("Hello from client!");
+});
+
+ws.addEventListener("message", (event) => {
+  console.log("Message from server:", event.data);
+});
