@@ -1,4 +1,4 @@
-import { WebSocketServer } from "node:websocket";
+import { WebSocketServer } from "ws";
 
 const wss = new WebSocketServer({ port: 3000 });
 

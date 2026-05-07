@@ -1,0 +1,16 @@
+{
+  "name": "simple-tabletop-server",
+  "version": "0.1.0",
+  "description": "Simplest of virtual tabletops nodejs server component.",
+  "license": "ISC",
+  "author": "Leon Ochmann",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}
